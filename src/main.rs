@@ -3,7 +3,7 @@ mod table {
     pub(crate) mod rocks;
     pub(crate) mod sled;
 }
-use std::thread;
+use std::{sync::Arc, thread};
 
 // use crate::db::RocksDB;
 use crate::{
@@ -16,9 +16,10 @@ use crate::{
 use anyhow::Result;
 use bytes::Bytes;
 use futures::future::join_all;
+use image_print_rs::ImagePrinter;
 use itertools::Itertools;
 use reqwest;
-use tokio::{self, task::JoinHandle};
+use tokio::{self, sync::Mutex, task::JoinHandle};
 
 const SLED_DB_PATH: &str = "/tmp/sled_db";
 const ROCKS_DB_PATH: &str = "/tmp/rocks_db";
@@ -72,119 +73,119 @@ async fn main() {
     let end = std::time::Instant::now();
     let multi = end.duration_since(start);
 
-    let start = std::time::Instant::now();
-    let _ = get_image_mpsc(&urls).await;
-    let end = std::time::Instant::now();
-    let mp = end.duration_since(start);
+    // let start = std::time::Instant::now();
+    // let _ = get_image_mpsc(&urls).await;
+    // let end = std::time::Instant::now();
+    // let mp = end.duration_since(start);
 
-    let start = std::time::Instant::now();
-    let _ = get_image_multi_thread_sled(&urls).await;
-    let end = std::time::Instant::now();
-    let sled_cached = end.duration_since(start);
+    // let start = std::time::Instant::now();
+    // let _ = get_image_multi_thread_sled(&urls).await;
+    // let end = std::time::Instant::now();
+    // let sled_cached = end.duration_since(start);
 
-    let start = std::time::Instant::now();
-    let _ = get_image_multi_thread_rocks(&urls).await;
-    let end = std::time::Instant::now();
-    let rocks_cached = end.duration_since(start);
+    // let start = std::time::Instant::now();
+    // let _ = get_image_multi_thread_rocks(&urls).await;
+    // let end = std::time::Instant::now();
+    // let rocks_cached = end.duration_since(start);
 
-    let start = std::time::Instant::now();
-    let _ = get_image_mpsc_save_rocks(&urls).await;
-    let end = std::time::Instant::now();
-    let rocks_mpsc_cached = end.duration_since(start);
+    // let start = std::time::Instant::now();
+    // let _ = get_image_mpsc_save_rocks(&urls).await;
+    // let end = std::time::Instant::now();
+    // let rocks_mpsc_cached = end.duration_since(start);
 
     // println!("Single thread: {:?}", single);
     println!("Multi thread: {:?}", multi);
-    println!("MPSC : {:?}", mp);
-    println!("Sled Cached: {:?}", sled_cached);
-    println!("Rocks Cached: {:?}", rocks_cached);
-    println!("MPSC Rocks Cached: {:?}", rocks_mpsc_cached);
+    // println!("MPSC : {:?}", mp);
+    // println!("Sled Cached: {:?}", sled_cached);
+    // println!("Rocks Cached: {:?}", rocks_cached);
+    // println!("MPSC Rocks Cached: {:?}", rocks_mpsc_cached);
 }
 
-pub async fn get_image_multi_thread_sled(urls: &Vec<&str>) -> Result<()> {
-    println!("start get image mpsc");
-    let urls_count = urls.len();
-    let urls = urls.into_iter().unique().collect::<Vec<_>>();
-    let urls_count_dedup = urls.len();
-    println!("{} urls, {} deduped", urls_count, urls_count_dedup);
+// pub async fn get_image_multi_thread_sled(urls: &Vec<&str>) -> Result<()> {
+//     println!("start get image mpsc");
+//     let urls_count = urls.len();
+//     let urls = urls.into_iter().unique().collect::<Vec<_>>();
+//     let urls_count_dedup = urls.len();
+//     println!("{} urls, {} deduped", urls_count, urls_count_dedup);
 
-    println!("start get image sled");
-    let db = sled_table::ImageTable::new(SLED_DB_PATH);
+//     println!("start get image sled");
+//     let db = sled_table::ImageTable::new(SLED_DB_PATH);
 
-    let mut tasks: Vec<JoinHandle<Result<ImageValue, String>>> = vec![];
+//     let mut tasks: Vec<JoinHandle<Result<ImageValue, String>>> = vec![];
 
-    for url in urls {
-        let db = db.clone();
-        let url = url.to_string();
-        tasks.push(tokio::spawn(async move {
-            let v = db.read(&url).unwrap();
-            if v.is_some() {
-                println!("ALREADY EXISTS -- {} --", url);
-                return Ok(v.unwrap());
-            }
-            println!("START --{}--", url);
-            match reqwest::get(url.to_string()).await {
-                Ok(resp) => match resp.bytes().await {
-                    Ok(bytes) => {
-                        println!("END --{}--", url.clone());
-                        let res = &ImageValue::new(url.clone(), bytes.to_vec());
-                        db.upsert(&url, &res.clone()).unwrap();
-                        return Ok(res.clone());
-                    }
-                    Err(_) => return Err(format!("ERROR reading {}", &url)),
-                },
-                Err(_) => return Err(format!("ERROR downloading {}", &url)),
-            }
-        }));
-    }
+//     for url in urls {
+//         let db = db.clone();
+//         let url = url.to_string();
+//         tasks.push(tokio::spawn(async move {
+//             let v = db.read(&url).unwrap();
+//             if v.is_some() {
+//                 println!("ALREADY EXISTS -- {} --", url);
+//                 return Ok(v.unwrap());
+//             }
+//             println!("START --{}--", url);
+//             match reqwest::get(url.to_string()).await {
+//                 Ok(resp) => match resp.bytes().await {
+//                     Ok(bytes) => {
+//                         println!("END --{}--", url.clone());
+//                         let res = &ImageValue::new(url.clone(), bytes.to_vec());
+//                         db.upsert(&url, &res.clone()).unwrap();
+//                         return Ok(res.clone());
+//                     }
+//                     Err(_) => return Err(format!("ERROR reading {}", &url)),
+//                 },
+//                 Err(_) => return Err(format!("ERROR downloading {}", &url)),
+//             }
+//         }));
+//     }
 
-    println!("Started {} tasks. Waiting...", tasks.len());
-    let _ = join_all(tasks).await;
-    Ok(())
-}
+//     println!("Started {} tasks. Waiting...", tasks.len());
+//     let _ = join_all(tasks).await;
+//     Ok(())
+// }
 
-pub async fn get_image_multi_thread_rocks(urls: &Vec<&str>) -> Result<()> {
-    println!("start get image mpsc");
-    let urls_count = urls.len();
-    let urls = urls.into_iter().unique().collect::<Vec<_>>();
-    let urls_count_dedup = urls.len();
-    println!("{} urls, {} deduped", urls_count, urls_count_dedup);
+// pub async fn get_image_multi_thread_rocks(urls: &Vec<&str>) -> Result<()> {
+//     println!("start get image mpsc");
+//     let urls_count = urls.len();
+//     let urls = urls.into_iter().unique().collect::<Vec<_>>();
+//     let urls_count_dedup = urls.len();
+//     println!("{} urls, {} deduped", urls_count, urls_count_dedup);
 
-    println!("start get image rocks");
-    let db = rocks_table::ImageTable::new(ROCKS_DB_PATH);
+//     println!("start get image rocks");
+//     let db = rocks_table::ImageTable::new(ROCKS_DB_PATH);
 
-    let mut tasks: Vec<JoinHandle<Result<ImageValue, String>>> = vec![];
+//     let mut tasks: Vec<JoinHandle<Result<ImageValue, String>>> = vec![];
 
-    for url in urls {
-        let db = db.clone();
-        let url = url.to_string();
-        tasks.push(tokio::spawn(async move {
-            let v = db.read(&url).unwrap();
-            if v.is_some() {
-                println!("ALREADY EXISTS -- {} --", url);
-                return Ok(v.unwrap());
-            }
-            println!("START --{}--", url);
-            match reqwest::get(url.to_string()).await {
-                Ok(resp) => match resp.bytes().await {
-                    Ok(bytes) => {
-                        println!("END --{}--", url.clone());
-                        let res = &ImageValue::new(url.clone(), bytes.to_vec());
-                        db.upsert(&url, &res.clone()).unwrap();
-                        println!("SAVED --{}--", url.clone());
-                        return Ok(res.clone());
-                    }
-                    Err(_) => return Err(format!("ERROR reading {}", &url)),
-                },
-                Err(_) => return Err(format!("ERROR downloading {}", &url)),
-            }
-        }));
-    }
+//     for url in urls {
+//         let db = db.clone();
+//         let url = url.to_string();
+//         tasks.push(tokio::spawn(async move {
+//             let v = db.read(&url).unwrap();
+//             if v.is_some() {
+//                 println!("ALREADY EXISTS -- {} --", url);
+//                 return Ok(v.unwrap());
+//             }
+//             println!("START --{}--", url);
+//             match reqwest::get(url.to_string()).await {
+//                 Ok(resp) => match resp.bytes().await {
+//                     Ok(bytes) => {
+//                         println!("END --{}--", url.clone());
+//                         let res = &ImageValue::new(url.clone(), bytes.to_vec());
+//                         db.upsert(&url, &res.clone()).unwrap();
+//                         println!("SAVED --{}--", url.clone());
+//                         return Ok(res.clone());
+//                     }
+//                     Err(_) => return Err(format!("ERROR reading {}", &url)),
+//                 },
+//                 Err(_) => return Err(format!("ERROR downloading {}", &url)),
+//             }
+//         }));
+//     }
 
-    println!("Started {} tasks. Waiting...", tasks.len());
-    let _ = join_all(tasks).await;
+//     println!("Started {} tasks. Waiting...", tasks.len());
+//     let _ = join_all(tasks).await;
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 pub async fn get_image_multi_thread(urls: &Vec<&str>) -> Result<()> {
     println!("start get image mpsc");
@@ -193,18 +194,34 @@ pub async fn get_image_multi_thread(urls: &Vec<&str>) -> Result<()> {
     let urls_count_dedup = urls.len();
     println!("{} urls, {} deduped", urls_count, urls_count_dedup);
 
-    println!("start get image multi thread");
-    let mut tasks: Vec<JoinHandle<Result<Bytes, String>>> = vec![];
+    // println!("start get image multi thread");
+    let mut tasks: Vec<JoinHandle<Result<(), String>>> = vec![];
 
-    for url in urls {
+    // let image_vec = Arc::new(Mutex::new(vec![]));
+
+    for (i, url) in urls.iter().enumerate() {
         let url = url.to_string();
-        println!("START --{}--", url);
+        let i = i.clone();
+        // let image_vec = image_vec.clone();
+        // println!("START --{}--", url);
         tasks.push(tokio::spawn(async move {
             match reqwest::get(url.to_string()).await {
                 Ok(resp) => match resp.bytes().await {
                     Ok(bytes) => {
-                        println!("END --{}--", url);
-                        Ok(bytes)
+                        // let image_vec = image_vec.clone();
+                        // image_vec.lock().await.push((i, bytes.to_vec()));
+
+                        let a = tokio::spawn(async move {
+                            let start = std::time::Instant::now();
+                            let mut printer = ImagePrinter::new(10);
+                            printer.offset(4, (i * 10 + 1) as i16);
+                            let _ = printer.print(&bytes);
+                            let end = std::time::Instant::now();
+                            let single = end.duration_since(start);
+                            println!("{:?}", single);
+                        });
+                        a.await.unwrap();
+                        return Ok(());
                     }
                     Err(_) => return Err(format!("ERROR reading {}", &url)),
                 },
@@ -214,77 +231,78 @@ pub async fn get_image_multi_thread(urls: &Vec<&str>) -> Result<()> {
     }
 
     println!("Started {} tasks. Waiting...", tasks.len());
-    let _ = join_all(tasks).await;
+    let res = join_all(tasks).await;
+
     Ok(())
 }
 
-pub async fn get_image_single_thread(urls: &Vec<&str>) -> Result<()> {
-    for (_, url) in urls.iter().enumerate() {
-        let url = url.to_string();
-        println!("START --{}--", url);
-        tokio::spawn(async move {
-            match reqwest::get(url.to_string()).await {
-                Ok(resp) => match resp.bytes().await {
-                    Ok(bytes) => {
-                        println!("END --{}--", url);
-                        Ok(bytes)
-                    }
-                    Err(_) => return Err(format!("ERROR reading {}", &url)),
-                },
-                Err(_) => return Err(format!("ERROR downloading {}", &url)),
-            }
-        });
-    }
-    Ok(())
-}
+// pub async fn get_image_single_thread(urls: &Vec<&str>) -> Result<()> {
+//     for (_, url) in urls.iter().enumerate() {
+//         let url = url.to_string();
+//         println!("START --{}--", url);
+//         tokio::spawn(async move {
+//             match reqwest::get(url.to_string()).await {
+//                 Ok(resp) => match resp.bytes().await {
+//                     Ok(bytes) => {
+//                         println!("END --{}--", url);
+//                         Ok(bytes)
+//                     }
+//                     Err(_) => return Err(format!("ERROR reading {}", &url)),
+//                 },
+//                 Err(_) => return Err(format!("ERROR downloading {}", &url)),
+//             }
+//         });
+//     }
+//     Ok(())
+// }
 
-async fn get_image_mpsc(urls: &Vec<&str>) -> Result<()> {
-    println!("start get image mpsc");
-    let urls_count = urls.len();
-    let urls = urls.into_iter().unique().collect::<Vec<_>>();
-    let urls_count_dedup = urls.len();
-    println!("{} urls, {} deduped", urls_count, urls_count_dedup);
+// async fn get_image_mpsc(urls: &Vec<&str>) -> Result<()> {
+//     println!("start get image mpsc");
+//     let urls_count = urls.len();
+//     let urls = urls.into_iter().unique().collect::<Vec<_>>();
+//     let urls_count_dedup = urls.len();
+//     println!("{} urls, {} deduped", urls_count, urls_count_dedup);
 
-    let thread_num = 32;
-    let (mut main_tx, main_rx) = flume::bounded::<Bytes>(1);
+//     let thread_num = 32;
+//     let (mut main_tx, main_rx) = flume::bounded::<Bytes>(1);
 
-    for _ in 0..thread_num {
-        let (mut tx, rx) = flume::bounded(1);
-        std::mem::swap(&mut tx, &mut main_tx);
+//     for _ in 0..thread_num {
+//         let (mut tx, rx) = flume::bounded(1);
+//         std::mem::swap(&mut tx, &mut main_tx);
 
-        thread::spawn(move || {
-            for msg in rx.iter() {
-                tx.send(msg).unwrap();
-            }
-        });
-    }
+//         thread::spawn(move || {
+//             for msg in rx.iter() {
+//                 tx.send(msg).unwrap();
+//             }
+//         });
+//     }
 
-    let urls = urls.clone();
+//     let urls = urls.clone();
 
-    for url in urls.iter() {
-        let main_tx = main_tx.clone();
-        let url = url.to_string();
-        println!("START --{}--", url);
-        tokio::spawn(async move {
-            match reqwest::get(url.to_string()).await {
-                Ok(resp) => match resp.bytes().await {
-                    Ok(bytes) => {
-                        println!("END --{}--", url);
-                        main_tx.send(bytes).unwrap();
-                        Ok(())
-                    }
-                    Err(_) => return Err(format!("ERROR reading {}", &url)),
-                },
-                Err(_) => return Err(format!("ERROR downloading {}", &url)),
-            }
-        });
-    }
+//     for url in urls.iter() {
+//         let main_tx = main_tx.clone();
+//         let url = url.to_string();
+//         println!("START --{}--", url);
+//         tokio::spawn(async move {
+//             match reqwest::get(url.to_string()).await {
+//                 Ok(resp) => match resp.bytes().await {
+//                     Ok(bytes) => {
+//                         println!("END --{}--", url);
+//                         main_tx.send(bytes).unwrap();
+//                         Ok(())
+//                     }
+//                     Err(_) => return Err(format!("ERROR reading {}", &url)),
+//                 },
+//                 Err(_) => return Err(format!("ERROR downloading {}", &url)),
+//             }
+//         });
+//     }
 
-    for _ in urls.iter() {
-        main_rx.recv().unwrap();
-    }
-    Ok(())
-}
+//     for _ in urls.iter() {
+//         main_rx.recv().unwrap();
+//     }
+//     Ok(())
+// }
 
 async fn get_image_mpsc_save_rocks(urls: &Vec<&str>) -> Result<()> {
     println!("start get image mpsc");
@@ -312,7 +330,7 @@ async fn get_image_mpsc_save_rocks(urls: &Vec<&str>) -> Result<()> {
                     println!("ERROR saving {}: {}", url, e);
                     continue;
                 }
-                println!("SAVED --{}--", url.clone());
+                // println!("SAVED --{}--", url.clone());
             }
         });
     }
@@ -323,15 +341,15 @@ async fn get_image_mpsc_save_rocks(urls: &Vec<&str>) -> Result<()> {
         let url = url.to_string();
         let v = db.read(&url).unwrap();
         if v.is_some() {
-            println!("ALREADY EXISTS -- {} --", &url);
+            // println!("ALREADY EXISTS -- {} --", &url);
             continue;
         }
-        println!("START --{}--", url);
+        // println!("START --{}--", url);
         tasks.push(tokio::spawn(async move {
             match reqwest::get(url.to_string()).await {
                 Ok(resp) => match resp.bytes().await {
                     Ok(bytes) => {
-                        println!("END --{}--", url);
+                        // println!("END --{}--", url);
                         main_tx.send((url, bytes.clone())).unwrap();
                         Ok(bytes)
                     }
@@ -342,8 +360,26 @@ async fn get_image_mpsc_save_rocks(urls: &Vec<&str>) -> Result<()> {
         }));
     }
 
-    println!("Started {} tasks. Waiting...", tasks.len());
+    // println!("Started {} tasks. Waiting...", tasks.len());
     let _ = join_all(tasks).await;
+    let mut printer = ImagePrinter::new(10);
+
+    // let _ = get_image_single_thread(&urls).await;
+
+    for (i, url) in urls.iter().enumerate() {
+        let start = std::time::Instant::now();
+        let img = db.read(&url.to_string()).unwrap();
+        if img.is_none() {
+            println!("ERROR: {} not found", url);
+            continue;
+        }
+
+        printer.offset(4, (i * 10 + 1) as i16);
+        let _ = printer.print(&img.unwrap().image);
+        let end = std::time::Instant::now();
+        let single = end.duration_since(start);
+        println!("{} {}", url, single.as_millis());
+    }
 
     Ok(())
 }
