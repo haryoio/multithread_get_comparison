@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 
-use rocksdb::{Options, DB};
+use rocksdb::DB;
 
 use crate::model::ImageValue;
 

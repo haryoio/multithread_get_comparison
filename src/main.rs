@@ -1,10 +1,9 @@
-mod db;
 mod model;
 mod table {
     pub(crate) mod rocks;
     pub(crate) mod sled;
 }
-use std::{fs, thread};
+use std::thread;
 
 // use crate::db::RocksDB;
 use crate::{
@@ -14,12 +13,12 @@ use crate::{
         sled::{self as sled_table, SledTable},
     },
 };
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use bytes::Bytes;
 use futures::future::join_all;
 use itertools::Itertools;
 use reqwest;
-use tokio::{self, fs::File, task::JoinHandle};
+use tokio::{self, task::JoinHandle};
 
 const SLED_DB_PATH: &str = "/tmp/sled_db";
 const ROCKS_DB_PATH: &str = "/tmp/rocks_db";
@@ -299,7 +298,7 @@ async fn get_image_mpsc_save_rocks(urls: &Vec<&str>) -> Result<()> {
     let mut tasks: Vec<JoinHandle<Result<Bytes, String>>> = vec![];
 
     let thread_num = 32;
-    let (mut main_tx, main_rx) = flume::bounded::<(String, Bytes)>(1);
+    let (mut main_tx, _) = flume::bounded::<(String, Bytes)>(1);
 
     for _ in 0..thread_num {
         let (mut tx, rx) = flume::bounded(1);
